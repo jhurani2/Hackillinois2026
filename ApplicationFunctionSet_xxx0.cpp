@@ -360,8 +360,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
 
   static int last_servo_cmd = 100; // Store the last position
   const int SERVO_CENTER = 100;
-  const int SERVO_MIN = 80;
-  const int SERVO_MAX = 130;
+  const int SERVO_MIN = 50;
+  const int SERVO_MAX = 140;
   const float Kp = 4.0;
   const float DEADBAND = 1.5; // Ignore pitch changes smaller than 1.5 degrees
 
