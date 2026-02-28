@@ -17,6 +17,10 @@
 
 #define _is_print 1
 #define _Test_print 0
+int Lowest = 80;
+int Highest = 150;
+int ExtraTime = 10000;
+static uint8_t unstick_phase = 0;
 
 #define TEST_LED_PIN A0  //TEMP
 
@@ -64,7 +68,6 @@ enum ConquerorCarFunctionalModel {
   ObstacleAvoidance_mode, /*避障模式*/
   Follow_mode,            /*跟随模式*/
   Rocker_mode,            /*摇杆模式*/
-  AutoLevel_mode, 
   CMD_inspect,
   CMD_Programming_mode,                   /*编程模式*/
   CMD_ClearAllFunctions_Standby_mode,     /*清除所有功能：进入空闲模式*/
@@ -97,7 +100,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Init(void) {
   Serial.begin(9600);
   AppVoltage.DeviceDriverSet_Voltage_Init();
   AppMotor.DeviceDriverSet_Motor_Init();
-  AppServo.DeviceDriverSet_Servo_Init(130);
+  AppServo.DeviceDriverSet_Servo_Init(100);
   AppKey.DeviceDriverSet_Key_Init();
   AppRBG_LED.DeviceDriverSet_RBGLED_Init(20);
   AppIRrecv.DeviceDriverSet_IRrecv_Init();
@@ -203,10 +206,6 @@ static void ApplicationFunctionSet_ConquerorCarMotionControl(ConquerorCarMotionC
       Kp = 2;
       UpperLimit = 180;
       break;
-    case AutoLevel_mode:
-      Kp = 2;
-      UpperLimit = 180;
-      break;
     default:
       Kp = 10;
       UpperLimit = 255;
@@ -307,8 +306,6 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void) {
     }
   }
 
-
-
   // { /*避障状态更新*/
   //   AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&UltrasoundData_cm /*out*/);
   //   UltrasoundDetectionStatus = function_xxx(UltrasoundData_cm, 0, ObstacleDetection);
@@ -345,44 +342,6 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void) {
       } else {
         digitalWrite(TEST_LED_PIN, LOW);
       }
-    }
-  }
-}
-
-  //Adding this
-
-void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
-{
-  if (Application_ConquerorCarxxx0.Functional_Mode != AutoLevel_mode) return;
-
-  static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate < 20) return; // Run at ~50Hz, non-blocking
-  lastUpdate = millis();
-
-  float Yaw = 0.0, Pitch = 0.0;
-  AppMPU6050getdata.MPU6050_dveGetEulerAngles(&Yaw, &Pitch);
-
-  static int last_servo_cmd = 130;
-  const int SERVO_CENTER = 130;  // Level position at 0 tilt
-  const int SERVO_MIN = 50;      // Max downward (130 - 80 range)
-  const int SERVO_MAX = 180;     // Max upward
-  const float Kp = 1.0;          // 1:1 degree mapping, adjust if needed
-  const float DEADBAND = 1.5;
-
-  if (abs(Pitch) > DEADBAND) {
-    // Opposite tilt: subtract pitch from center
-    int servo_cmd = SERVO_CENTER - (int)(Kp * Pitch);
-
-    if (servo_cmd < SERVO_MIN) servo_cmd = SERVO_MIN;
-    if (servo_cmd > SERVO_MAX) servo_cmd = SERVO_MAX;
-
-    if (servo_cmd != last_servo_cmd) {
-      // Direct servo write — avoids the 500ms blocking delay
-      extern Servo myservo;
-      myservo.attach(10);       // PIN_Servo_y = 10
-      myservo.write(servo_cmd);
-      // Do NOT detach — keeps servo holding position
-      last_servo_cmd = servo_cmd;
     }
   }
 }
@@ -547,8 +506,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void) {
 
 /*摇杆*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Rocker(void) {
-  // Added AutoLevel_mode here so you can still drive while ploughing!
-  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode || Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
+  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode) {
     ApplicationFunctionSet_ConquerorCarMotionControl(Application_ConquerorCarxxx0.Motion_Control /*direction*/, Rocker_CarSpeed /*speed*/);
   }
 }
@@ -759,8 +717,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t Set_Servo) {
         }
 
         // hard limits
-        if (y_angle < 80) y_angle = 80;
-        if (y_angle > 130) y_angle = 130;
+        if (y_angle < Lowest) y_angle = Lowest;
+        if (y_angle > Highest) y_angle = Highest;
 
         AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
         print_servo(y_angle);
@@ -768,13 +726,13 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t Set_Servo) {
       break;
 
     case 3:
-      y_angle = 80;
+      y_angle = Lowest;
       AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       print_servo(y_angle);
       break;
 
     case 4:
-      y_angle = 130;
+      y_angle = Highest;
       AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       print_servo(y_angle);
       break;
@@ -1426,6 +1384,28 @@ void ApplicationFunctionSet::ApplicationFunctionSet_KeyCommand(void) {
     }
   }
 }
+void ApplicationFunctionSet::CMD_UnstickRotate(void) {
+  switch (unstick_phase) {
+    case 0:
+      CMD_CarControlTimeLimit_xxx0(CarDirection_BackwardLeft, 150, ExtraTime);
+      break;
+    case 1:
+      CMD_CarControlTimeLimit_xxx0(CarDirection_ForwardRight, 150, ExtraTime);
+      break;
+    case 2:
+      CMD_CarControlTimeLimit_xxx0(CarDirection_Left, 150, ExtraTime);
+      break;
+    case 3:
+      CMD_CarControlTimeLimit_xxx0(CarDirection_Right, 150, ExtraTime);
+      break;
+  }
+
+  unstick_phase = (unstick_phase + 1) % 4;
+}
+
+void ApplicationFunctionSet::CMD_WiggleOut(void) {
+  CMD_CarControlTimeLimit_xxx0(CarDirection_BackwardRight, 150, ExtraTime);
+}
 /*红外遥控*/
 void ApplicationFunctionSet::ApplicationFunctionSet_IRrecv(void) {
   uint8_t IRrecv_button;
@@ -1477,23 +1457,14 @@ void ApplicationFunctionSet::ApplicationFunctionSet_IRrecv(void) {
         ApplicationFunctionSet_Servo(4);
         IRrecv_en = false;
         break;
-      case 10: // numeric 5 -> Toggle AutoLevel Mode ON and OFF
-        if (Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
-          Application_ConquerorCarxxx0.Functional_Mode = Standby_mode; // Turn Off
-        } else {
-          Application_ConquerorCarxxx0.Functional_Mode = AutoLevel_mode; // Turn On
-        }
+      case 10:
+        CMD_UnstickRotate();
         IRrecv_en = false;
         break;
-      case /* constant-expression */ 11:
-        /* code */ if (Application_ConquerorCarxxx0.Functional_Mode == TraceBased_mode) {
-          TrackingDetection_S -= 10;
-          if (TrackingDetection_S > 600) {
-            TrackingDetection_S = 600;
-          } else if (TrackingDetection_S < 30) {
-            TrackingDetection_S = 30;
-          }
-        }
+
+      case 11:
+        CMD_WiggleOut();
+        IRrecv_en = false;
         break;
 
       default:
