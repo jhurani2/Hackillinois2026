@@ -64,6 +64,7 @@ enum ConquerorCarFunctionalModel {
   ObstacleAvoidance_mode, /*避障模式*/
   Follow_mode,            /*跟随模式*/
   Rocker_mode,            /*摇杆模式*/
+  AutoLevel_mode, 
   CMD_inspect,
   CMD_Programming_mode,                   /*编程模式*/
   CMD_ClearAllFunctions_Standby_mode,     /*清除所有功能：进入空闲模式*/
@@ -202,6 +203,10 @@ static void ApplicationFunctionSet_ConquerorCarMotionControl(ConquerorCarMotionC
       Kp = 2;
       UpperLimit = 180;
       break;
+    case AutoLevel_mode:
+      Kp = 2;
+      UpperLimit = 180;
+      break;
     default:
       Kp = 10;
       UpperLimit = 255;
@@ -302,6 +307,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void) {
     }
   }
 
+
+
   // { /*避障状态更新*/
   //   AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&UltrasoundData_cm /*out*/);
   //   UltrasoundDetectionStatus = function_xxx(UltrasoundData_cm, 0, ObstacleDetection);
@@ -338,6 +345,37 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void) {
       } else {
         digitalWrite(TEST_LED_PIN, LOW);
       }
+    }
+  }
+}
+
+  //Adding this
+
+void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
+{
+  if (Application_ConquerorCarxxx0.Functional_Mode != AutoLevel_mode) return;
+
+  float Pitch = 0.0;
+  AppMPU6050getdata.MPU6050_dveGetEulerAngles(nullptr, &Pitch);
+
+  static int last_servo_cmd = 100; // Store the last position
+  const int SERVO_CENTER = 100;
+  const int SERVO_MIN = 80;
+  const int SERVO_MAX = 130;
+  const float Kp = 4.0;
+  const float DEADBAND = 1.5; // Ignore pitch changes smaller than 1.5 degrees
+
+  // Only actuate if the pitch is outside the deadband to prevent jitter
+  if (abs(Pitch) > DEADBAND) {
+    int servo_cmd = SERVO_CENTER - (Kp * Pitch);
+
+    if (servo_cmd < SERVO_MIN) servo_cmd = SERVO_MIN;
+    if (servo_cmd > SERVO_MAX) servo_cmd = SERVO_MAX;
+
+    // Only send the command if it actually changed
+    if (servo_cmd != last_servo_cmd) {
+      AppServo.DeviceDriverSet_Servo_controls(2, servo_cmd);
+      last_servo_cmd = servo_cmd;
     }
   }
 }
@@ -502,7 +540,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void) {
 
 /*摇杆*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Rocker(void) {
-  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode) {
+  // Added AutoLevel_mode here so you can still drive while ploughing!
+  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode || Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
     ApplicationFunctionSet_ConquerorCarMotionControl(Application_ConquerorCarxxx0.Motion_Control /*direction*/, Rocker_CarSpeed /*speed*/);
   }
 }
@@ -1431,10 +1470,13 @@ void ApplicationFunctionSet::ApplicationFunctionSet_IRrecv(void) {
         ApplicationFunctionSet_Servo(4);
         IRrecv_en = false;
         break;
-      case /* constant-expression */ 10:
-        /* code */ if (Application_ConquerorCarxxx0.Functional_Mode == TraceBased_mode) {
-          TrackingDetection_S = 250;
+      case 10: // numeric 5 -> Toggle AutoLevel Mode ON and OFF
+        if (Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
+          Application_ConquerorCarxxx0.Functional_Mode = Standby_mode; // Turn Off
+        } else {
+          Application_ConquerorCarxxx0.Functional_Mode = AutoLevel_mode; // Turn On
         }
+        IRrecv_en = false;
         break;
       case /* constant-expression */ 11:
         /* code */ if (Application_ConquerorCarxxx0.Functional_Mode == TraceBased_mode) {

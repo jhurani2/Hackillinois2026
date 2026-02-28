@@ -28,6 +28,7 @@ public:
   void ApplicationFunctionSet_SensorDataUpdate(void);   //传感器数据更新
   void ApplicationFunctionSet_SerialPortDataAnalysis(void);
   void ApplicationFunctionSet_IRrecv(void);
+  void ApplicationFunctionSet_AutoLevel(void);
 
 public: /*CMD*/
   void CMD_UltrasoundModuleStatus_xxx0(uint8_t is_get);

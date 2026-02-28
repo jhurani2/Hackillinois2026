@@ -82,3 +82,32 @@ bool MPU6050_getdata::MPU6050_dveGetEulerAngles(float *Yaw)
   *Yaw = agz;
   return false;
 }
+
+bool MPU6050_getdata::MPU6050_dveGetEulerAngles(float *Yaw, float *Pitch)
+{
+  unsigned long now = millis();   //当前时间(ms)
+  dt = (now - lastTime) / 1000.0; //微分时间(s)
+  lastTime = now;                 //上一次采样时间(ms)
+  gz = accelgyro.getRotationZ();
+  float gyroz = -(gz - gzo) / 131.0 * dt; //z轴角速度
+  if (fabs(gyroz) < 0.05)
+  {
+    gyroz = 0.00;
+  }
+  agz += gyroz; //z轴角速度积分
+  *Yaw = agz;
+
+  // 2. Calculate Pitch using the Accelerometer
+  if (Pitch != nullptr) {
+      // Read raw accelerometer values
+      int16_t ax, ay, az;
+      accelgyro.getAcceleration(&ax, &ay, &az);
+
+      // Apply the trigonometry formula to get Pitch in degrees
+      // We use atan2 for a full 360-degree resolution, converted to degrees
+      *Pitch = atan2(-ax, sqrt((long)ay * ay + (long)az * az)) * (180.0 / M_PI);
+  }
+
+  
+  return false;
+}
