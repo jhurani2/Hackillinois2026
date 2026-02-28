@@ -97,7 +97,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Init(void) {
   Serial.begin(9600);
   AppVoltage.DeviceDriverSet_Voltage_Init();
   AppMotor.DeviceDriverSet_Motor_Init();
-  AppServo.DeviceDriverSet_Servo_Init(100);
+  AppServo.DeviceDriverSet_Servo_Init(130);
   AppKey.DeviceDriverSet_Key_Init();
   AppRBG_LED.DeviceDriverSet_RBGLED_Init(20);
   AppIRrecv.DeviceDriverSet_IRrecv_Init();
@@ -355,26 +355,33 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
 {
   if (Application_ConquerorCarxxx0.Functional_Mode != AutoLevel_mode) return;
 
-  float Pitch = 0.0;
-  AppMPU6050getdata.MPU6050_dveGetEulerAngles(nullptr, &Pitch);
+  static unsigned long lastUpdate = 0;
+  if (millis() - lastUpdate < 20) return; // Run at ~50Hz, non-blocking
+  lastUpdate = millis();
 
-  static int last_servo_cmd = 100; // Store the last position
-  const int SERVO_CENTER = 100;
-  const int SERVO_MIN = 50;
-  const int SERVO_MAX = 140;
-  const float Kp = 4.0;
-  const float DEADBAND = 1.5; // Ignore pitch changes smaller than 1.5 degrees
+  float Yaw = 0.0, Pitch = 0.0;
+  AppMPU6050getdata.MPU6050_dveGetEulerAngles(&Yaw, &Pitch);
 
-  // Only actuate if the pitch is outside the deadband to prevent jitter
+  static int last_servo_cmd = 130;
+  const int SERVO_CENTER = 130;  // Level position at 0 tilt
+  const int SERVO_MIN = 50;      // Max downward (130 - 80 range)
+  const int SERVO_MAX = 180;     // Max upward
+  const float Kp = 1.0;          // 1:1 degree mapping, adjust if needed
+  const float DEADBAND = 1.5;
+
   if (abs(Pitch) > DEADBAND) {
-    int servo_cmd = SERVO_CENTER - (Kp * Pitch);
+    // Opposite tilt: subtract pitch from center
+    int servo_cmd = SERVO_CENTER - (int)(Kp * Pitch);
 
     if (servo_cmd < SERVO_MIN) servo_cmd = SERVO_MIN;
     if (servo_cmd > SERVO_MAX) servo_cmd = SERVO_MAX;
 
-    // Only send the command if it actually changed
     if (servo_cmd != last_servo_cmd) {
-      AppServo.DeviceDriverSet_Servo_controls(2, servo_cmd);
+      // Direct servo write — avoids the 500ms blocking delay
+      extern Servo myservo;
+      myservo.attach(10);       // PIN_Servo_y = 10
+      myservo.write(servo_cmd);
+      // Do NOT detach — keeps servo holding position
       last_servo_cmd = servo_cmd;
     }
   }
