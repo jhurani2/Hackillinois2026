@@ -1,11 +1,4 @@
-/*
- * @Author: ELEGOO
- * @Date: 2019-10-22 11:59:09
- * @LastEditTime: 2020-12-18 14:38:11
- * @LastEditors: Changhua
- * @Description: conqueror robot tank
- * @FilePath: 
- */
+
 #ifndef _DeviceDriverSet_xxx0_H_
 #define _DeviceDriverSet_xxx0_H_
 
@@ -152,6 +145,8 @@ public:
   void DeviceDriverSet_Servo_controls(uint8_t Servo, unsigned int Position_angle);
 
 private:
+  Servo servo_z;
+  Servo servo_y;
 #define PIN_Servo_z 11
 #define PIN_Servo_y 10
 };
@@ -203,9 +198,7 @@ private:
 #define bRECV_7 2351064443
 #define bRECV_8 1217346747
 #define bRECV_9 71952287
-  // #define bRECV_ *851901943
-  // #define bRECV_0 465573243
-  // #define bRECV_ # 1053031451
+
 };
 
 #endif

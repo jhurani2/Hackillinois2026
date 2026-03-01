@@ -20,7 +20,6 @@
 
 #define TEST_LED_PIN A0  //TEMP
 
-
 ApplicationFunctionSet Application_FunctionSet;
 
 /*硬件设备成员对象序列*/
@@ -64,7 +63,7 @@ enum ConquerorCarFunctionalModel {
   ObstacleAvoidance_mode, /*避障模式*/
   Follow_mode,            /*跟随模式*/
   Rocker_mode,            /*摇杆模式*/
-  AutoLevel_mode, 
+  AutoLevel_mode,
   CMD_inspect,
   CMD_Programming_mode,                   /*编程模式*/
   CMD_ClearAllFunctions_Standby_mode,     /*清除所有功能：进入空闲模式*/
@@ -97,7 +96,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Init(void) {
   Serial.begin(9600);
   AppVoltage.DeviceDriverSet_Voltage_Init();
   AppMotor.DeviceDriverSet_Motor_Init();
-  AppServo.DeviceDriverSet_Servo_Init(125);
+  AppServo.DeviceDriverSet_Servo_Init(90);
   AppKey.DeviceDriverSet_Key_Init();
   AppRBG_LED.DeviceDriverSet_RBGLED_Init(20);
   AppIRrecv.DeviceDriverSet_IRrecv_Init();
@@ -349,14 +348,13 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void) {
   }
 }
 
-  //Adding this
+//Adding this
 
-void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
-{
+void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void) {
   if (Application_ConquerorCarxxx0.Functional_Mode != AutoLevel_mode) return;
 
   static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate < 20) return; // Run at ~50Hz, non-blocking
+  if (millis() - lastUpdate < 20) return;  // Run at ~50Hz, non-blocking
   lastUpdate = millis();
 
   float Yaw = 0.0, raw_Pitch = 0.0;
@@ -364,7 +362,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
 
   // --- THE SOFTWARE SHOCK ABSORBER (Low-Pass Filter) ---
   static float smoothed_Pitch = 0.0;
-  const float ALPHA = 0.15; // Tuning knob: 1.0 = raw noise, 0.05 = super smooth/slow
+  const float ALPHA = 0.15;  // Tuning knob: 1.0 = raw noise, 0.05 = super smooth/slow
   smoothed_Pitch = (ALPHA * raw_Pitch) + ((1.0 - ALPHA) * smoothed_Pitch);
   // ------------------------------------------------------
 
@@ -372,14 +370,14 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
   const int SERVO_CENTER = 110;  // Level position at 0 tilt
   const int SERVO_MIN = 50;      // Max downward
   const int SERVO_MAX = 180;     // Max upward
-  
+
   // FIXED: Changed these to 'float' so your decimals don't get chopped off!
-  const float Kp = 1.0;          
+  const float Kp = 1.0;
   const float DEADBAND = 1.5;
 
   // Use the smoothed_Pitch for our math instead of the raw, noisy data
   if (abs(smoothed_Pitch) > DEADBAND) {
-    
+
     // Add smoothed pitch to the center
     int servo_cmd = SERVO_CENTER + (int)(Kp * smoothed_Pitch);
 
@@ -389,15 +387,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
     // Hysteresis: Only move the servo if the calculation changes by >= 2 degrees.
     // This stops the servo from rapidly vibrating between two adjacent numbers.
     if (abs(servo_cmd - last_servo_cmd) >= 2) {
-      extern Servo myservo;
-      
-      // Only call attach if it isn't already attached to save processing time
-      if (!myservo.attached()) {
-        myservo.attach(10);       // PIN_Servo_y = 10
-      }
-      
-      myservo.write(servo_cmd);
-      // Do NOT detach — keeps servo holding position
+      AppServo.DeviceDriverSet_Servo_controls(2, servo_cmd);
       last_servo_cmd = servo_cmd;
     }
   }
@@ -564,7 +554,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void) {
 /*摇杆*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Rocker(void) {
   // Added AutoLevel_mode here so you can still drive while ploughing!
-  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode) { //|| Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
+  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode) {  //|| Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
     ApplicationFunctionSet_ConquerorCarMotionControl(Application_ConquerorCarxxx0.Motion_Control /*direction*/, Rocker_CarSpeed /*speed*/);
   }
 }
@@ -755,53 +745,57 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Follow(void) {
   }
 }
 /*舵机控制*/
-void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t Set_Servo) {
-  static uint8_t z_angle = 90;
+void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t is_Servo) {
   static uint8_t y_angle = 90;
-  uint8_t is_Servo = Set_Servo;  //防止被优化
+  static uint8_t z_angle = 90;
 
-  auto print_servo = [](uint8_t angle) {
-    //Serial.print("Y servo angle = ");
-    Serial.println(angle);
-  };
+  bool updateY = false;
+  bool updateZ = false;
 
   switch (is_Servo) {
-    case 1 ... 2:
-      {
-        if (is_Servo == 1) {
-          y_angle -= 10;
-        } else if (is_Servo == 2) {
-          y_angle += 10;
-        }
-
-        // hard limits
-        if (y_angle < 80) y_angle = 80;
-        if (y_angle > 130) y_angle = 130;
-
-        AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
-        print_servo(y_angle);
-      }
+    // Y servo
+    case 1:
+      y_angle -= 10;
+      updateY = true;
       break;
-
+    case 2:
+      y_angle += 10;
+      updateY = true;
+      break;
     case 3:
       y_angle = 50;
-      AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
-      print_servo(y_angle);
+      updateY = true;
       break;
-
     case 4:
       y_angle = 140;
-      AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
-      print_servo(y_angle);
+      updateY = true;
       break;
+
+    // Z servo
     case 5:
-      AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo--y*/ 2, /*unsigned uint8_t Position_angle*/ 90);
-      AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo--z*/ 1, /*unsigned uint8_t Position_angle*/ 90);
+      z_angle = 110;
+      updateZ = true;
       break;
-    default:
+    case 6:
+      z_angle = 180;
+      updateZ = true;
       break;
   }
+
+  // Clamp
+  if (updateY) {
+    if (y_angle < 50) y_angle = 50;
+    if (y_angle > 140) y_angle = 140;
+    AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
+  }
+
+  if (updateZ) {
+    if (z_angle < 0) z_angle = 0;
+    if (z_angle > 180) z_angle = 180;
+    AppServo.DeviceDriverSet_Servo_controls(1, z_angle);
+  }
 }
+
 /*待机*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Standby(void) {
   static bool is_ED = true;
@@ -1469,47 +1463,41 @@ void ApplicationFunctionSet::ApplicationFunctionSet_IRrecv(void) {
         /* code */
         Application_ConquerorCarxxx0.Motion_Control = Right;
         break;
-      case /* constant-expression */ 5:
-        /* code */
-        //Application_ConquerorCarxxx0.Motion_Control = stop_it;
-        Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;
+      case 5:
+        if (Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
+          Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;  // Turn Off
+        } else {
+          Application_ConquerorCarxxx0.Functional_Mode = AutoLevel_mode;  // Turn On
+        }
+        Serial.println(Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode);
+        IRrecv_en = false;
         break;
 
       case 6:  // numeric 1 → servo step down
-        ApplicationFunctionSet_Servo(1);
+        ApplicationFunctionSet_Servo(5);
         IRrecv_en = false;
         break;
 
       case 7:  // numeric 2 → servo step up
-        ApplicationFunctionSet_Servo(2);
+        ApplicationFunctionSet_Servo(3);
         IRrecv_en = false;
         break;
       case 8:  // numeric 3
-        ApplicationFunctionSet_Servo(3);
+        ApplicationFunctionSet_Servo(6);
         IRrecv_en = false;
         break;
 
       case 9:  // numeric 4
+        ApplicationFunctionSet_Servo(1);
+        IRrecv_en = false;
+        break;
+      case 10:  // numeric 5 -> Toggle AutoLevel Mode ON and OFF
         ApplicationFunctionSet_Servo(4);
         IRrecv_en = false;
         break;
-      case 10: // numeric 5 -> Toggle AutoLevel Mode ON and OFF
-        if (Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
-          Application_ConquerorCarxxx0.Functional_Mode = Standby_mode; // Turn Off
-        } else {
-          Application_ConquerorCarxxx0.Functional_Mode = AutoLevel_mode; // Turn On
-        }
+      case 11:  // button 6
+        ApplicationFunctionSet_Servo(2);
         IRrecv_en = false;
-        break;
-      case /* constant-expression */ 11:
-        /* code */ if (Application_ConquerorCarxxx0.Functional_Mode == TraceBased_mode) {
-          TrackingDetection_S -= 10;
-          if (TrackingDetection_S > 600) {
-            TrackingDetection_S = 600;
-          } else if (TrackingDetection_S < 30) {
-            TrackingDetection_S = 30;
-          }
-        }
         break;
 
       default:
