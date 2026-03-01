@@ -115,8 +115,9 @@ The robot successfully flattens uneven sand terrain, significantly reducing heig
 ## Team
 
 - Aman Jhurani  
-- [Team Member Name]  
-- [Team Member Name]  
+- Alex Tolliver
+- Manav Chopda
+- Erick Munoz
 
 ---
 
