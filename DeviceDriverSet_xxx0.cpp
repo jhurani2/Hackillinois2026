@@ -35,17 +35,6 @@ void DeviceDriverSet_RBGLED::DeviceDriverSet_RBGLED_Init(uint8_t set_Brightness)
   FastLED.addLeds<NEOPIXEL, PIN_RBGLED>(leds, NUM_LEDS);
   FastLED.setBrightness(set_Brightness);
 }
-#if _Test_DeviceDriverSet
-void DeviceDriverSet_RBGLED::DeviceDriverSet_RBGLED_Test(void) {
-  leds[0] = CRGB::White;
-  FastLED.show();
-  delay_xxx(50);
-  leds[1] = CRGB::Red;
-  FastLED.show();
-  delay_xxx(50);
-  DeviceDriverSet_RBGLED_xxx(50 /*Duration*/, 5 /*Traversal_Number*/, CRGB::Black);
-}
-#endif
 
 void DeviceDriverSet_RBGLED::DeviceDriverSet_RBGLED_Color(uint8_t LED_s, uint8_t r, uint8_t g, uint8_t b) {
   if (LED_s > NUM_LEDS)
@@ -139,30 +128,6 @@ void DeviceDriverSet_Motor::DeviceDriverSet_Motor_Init(void) {
   pinMode(PIN_Motor_BIN_1, OUTPUT);
   pinMode(PIN_Motor_STBY, OUTPUT);
 }
-
-#if _Test_DeviceDriverSet
-void DeviceDriverSet_Motor::DeviceDriverSet_Motor_Test(void) {
-  //A...Right
-  //B...Left
-  digitalWrite(PIN_Motor_STBY, HIGH);
-
-  digitalWrite(PIN_Motor_AIN_1, HIGH);
-  analogWrite(PIN_Motor_PWMA, 100);
-  digitalWrite(PIN_Motor_BIN_1, HIGH);
-  analogWrite(PIN_Motor_PWMB, 100);
-  delay_xxx(1000);
-
-  digitalWrite(PIN_Motor_STBY, LOW);
-  delay_xxx(1000);
-  digitalWrite(PIN_Motor_STBY, HIGH);
-  digitalWrite(PIN_Motor_AIN_1, LOW);
-  analogWrite(PIN_Motor_PWMA, 100);
-  digitalWrite(PIN_Motor_BIN_1, LOW);
-  analogWrite(PIN_Motor_PWMB, 100);
-
-  delay_xxx(1000);
-}
-#endif
 
 /*
  Motor_control：AB / 方向、速度

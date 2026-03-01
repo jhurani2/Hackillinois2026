@@ -746,53 +746,48 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Follow(void) {
 }
 /*舵机控制*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t is_Servo) {
-  static uint8_t y_angle = 90;
   static uint8_t z_angle = 90;
-
-  bool updateY = false;
-  bool updateZ = false;
+  static uint8_t y_angle = 90;
 
   switch (is_Servo) {
-    // Y servo
+
+    // Y servo relative
     case 1:
       y_angle -= 10;
-      updateY = true;
+      if (y_angle < 50) y_angle = 50;
+      AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       break;
+
     case 2:
       y_angle += 10;
-      updateY = true;
+      if (y_angle > 140) y_angle = 140;
+      AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       break;
+
+    // Y servo absolute
     case 3:
       y_angle = 50;
-      updateY = true;
+      AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       break;
+
     case 4:
       y_angle = 140;
-      updateY = true;
+      AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       break;
 
-    // Z servo
+    // Z servo absolute
     case 5:
       z_angle = 110;
-      updateZ = true;
+      AppServo.DeviceDriverSet_Servo_controls(1, z_angle);
       break;
+
     case 6:
       z_angle = 180;
-      updateZ = true;
+      AppServo.DeviceDriverSet_Servo_controls(1, z_angle);
       break;
-  }
 
-  // Clamp
-  if (updateY) {
-    if (y_angle < 50) y_angle = 50;
-    if (y_angle > 140) y_angle = 140;
-    AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
-  }
-
-  if (updateZ) {
-    if (z_angle < 0) z_angle = 0;
-    if (z_angle > 180) z_angle = 180;
-    AppServo.DeviceDriverSet_Servo_controls(1, z_angle);
+    default:
+      break;
   }
 }
 
@@ -1440,81 +1435,72 @@ void ApplicationFunctionSet::ApplicationFunctionSet_KeyCommand(void) {
 void ApplicationFunctionSet::ApplicationFunctionSet_IRrecv(void) {
   uint8_t IRrecv_button;
   static bool IRrecv_en = false;
-  if (AppIRrecv.DeviceDriverSet_IRrecv_Get(&IRrecv_button /*out*/)) {
+
+  // Read IR
+  if (AppIRrecv.DeviceDriverSet_IRrecv_Get(&IRrecv_button)) {
     IRrecv_en = true;
-    //Serial.println(IRrecv_button);
+    AppIRrecv.IR_PreMillis = millis();
   }
-  if (true == IRrecv_en) {
-    Serial.println(IRrecv_button);
-    switch (IRrecv_button) {
-      case /* constant-expression */ 1:
-        /* code */
-        Application_ConquerorCarxxx0.Motion_Control = Forward;
-        break;
-      case /* constant-expression */ 2:
-        /* code */
-        Application_ConquerorCarxxx0.Motion_Control = Backward;
-        break;
-      case /* constant-expression */ 3:
-        /* code */
-        Application_ConquerorCarxxx0.Motion_Control = Left;
-        break;
-      case /* constant-expression */ 4:
-        /* code */
-        Application_ConquerorCarxxx0.Motion_Control = Right;
-        break;
-      case 5:
-        if (Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
-          Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;  // Turn Off
-        } else {
-          Application_ConquerorCarxxx0.Functional_Mode = AutoLevel_mode;  // Turn On
-        }
-        Serial.println(Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode);
-        IRrecv_en = false;
-        break;
 
-      case 6:  // numeric 1 → servo step down
-        ApplicationFunctionSet_Servo(5);
-        IRrecv_en = false;
-        break;
+  if (!IRrecv_en) return;
 
-      case 7:  // numeric 2 → servo step up
-        ApplicationFunctionSet_Servo(3);
-        IRrecv_en = false;
-        break;
-      case 8:  // numeric 3
-        ApplicationFunctionSet_Servo(6);
-        IRrecv_en = false;
-        break;
+  Serial.println(IRrecv_button);
 
-      case 9:  // numeric 4
-        ApplicationFunctionSet_Servo(1);
-        IRrecv_en = false;
-        break;
-      case 10:  // numeric 5 -> Toggle AutoLevel Mode ON and OFF
-        ApplicationFunctionSet_Servo(4);
-        IRrecv_en = false;
-        break;
-      case 11:  // button 6
-        ApplicationFunctionSet_Servo(2);
-        IRrecv_en = false;
-        break;
+  bool oneShot = (IRrecv_button >= 5);  // Servo + mode buttons
 
-      default:
-        Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;
-        break;
-    }
-    /*方向控制部分实现时长约束控制*/
-    if (IRrecv_button < 5) {
+  switch (IRrecv_button) {
+
+    // ---------------- Motion (continuous) ----------------
+    case 1:
+      Application_ConquerorCarxxx0.Motion_Control = Forward;
       Application_ConquerorCarxxx0.Functional_Mode = Rocker_mode;
-      if (millis() - AppIRrecv.IR_PreMillis > 300) {
-        IRrecv_en = false;
-        Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;
-        AppIRrecv.IR_PreMillis = millis();
-      }
-    } else {
+      break;
+
+    case 2:
+      Application_ConquerorCarxxx0.Motion_Control = Backward;
+      Application_ConquerorCarxxx0.Functional_Mode = Rocker_mode;
+      break;
+
+    case 3:
+      Application_ConquerorCarxxx0.Motion_Control = Left;
+      Application_ConquerorCarxxx0.Functional_Mode = Rocker_mode;
+      break;
+
+    case 4:
+      Application_ConquerorCarxxx0.Motion_Control = Right;
+      Application_ConquerorCarxxx0.Functional_Mode = Rocker_mode;
+      break;
+
+    // ---------------- Mode toggle ----------------
+    case 5:
+      Application_ConquerorCarxxx0.Functional_Mode =
+        (Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode)
+          ? Standby_mode
+          : AutoLevel_mode;
+      break;
+
+    // ---------------- Servo controls ----------------
+    case 6: ApplicationFunctionSet_Servo(5); break;
+    case 7: ApplicationFunctionSet_Servo(3); break;
+    case 8: ApplicationFunctionSet_Servo(6); break;
+    case 9: ApplicationFunctionSet_Servo(1); break;
+    case 10: ApplicationFunctionSet_Servo(4); break;
+    case 11: ApplicationFunctionSet_Servo(2); break;
+
+    default:
+      Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;
+      break;
+  }
+
+  // ---------------- IR handling ----------------
+  if (oneShot) {
+    // Servo + mode buttons: run once
+    IRrecv_en = false;
+  } else {
+    // Motion buttons: auto-stop after short timeout
+    if (millis() - AppIRrecv.IR_PreMillis > 120) {
       IRrecv_en = false;
-      AppIRrecv.IR_PreMillis = millis();
+      Application_ConquerorCarxxx0.Functional_Mode = Standby_mode;
     }
   }
 }
