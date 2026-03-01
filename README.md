@@ -3,7 +3,7 @@
 **Dune & Dumber** is a semi-autonomous robotic platform designed to level uneven sand terrain using active mechanical control and real-time inertial feedback. Built for the John Deere × HackIllinois 2026 hardware hackathon, the system integrates mechanical design, embedded electronics, and closed-loop control to achieve adaptive terrain leveling.
 
 <p align="center">
-  <img src="images/robot.jpg" width="650">
+  <img src="1000018110.jpg" width="650">
 </p>
 
 ---
