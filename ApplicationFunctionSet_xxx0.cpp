@@ -34,7 +34,7 @@ DeviceDriverSet_Motor AppMotor;
 DeviceDriverSet_ULTRASONIC AppULTRASONIC;
 DeviceDriverSet_Servo AppServo;
 DeviceDriverSet_IRrecv AppIRrecv;
-/*f(x) int */
+/*f(x) uint8_t */
 static boolean
 function_xxx(long x, long s, long e)  //f(x)
 {
@@ -97,7 +97,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Init(void) {
   Serial.begin(9600);
   AppVoltage.DeviceDriverSet_Voltage_Init();
   AppMotor.DeviceDriverSet_Motor_Init();
-  AppServo.DeviceDriverSet_Servo_Init(130);
+  AppServo.DeviceDriverSet_Servo_Init(125);
   AppKey.DeviceDriverSet_Key_Init();
   AppRBG_LED.DeviceDriverSet_RBGLED_Init(20);
   AppIRrecv.DeviceDriverSet_IRrecv_Init();
@@ -149,13 +149,13 @@ static void ApplicationFunctionSet_ConquerorCarLinearMotionControl(ConquerorCarM
     yaw_So = Yaw;
   }
   //加入比例常数Kp
-  int R = (Yaw - yaw_So) * Kp + speed;
+  uint8_t R = (Yaw - yaw_So) * Kp + speed;
   if (R > UpperLimit) {
     R = UpperLimit;
   } else if (R < 10) {
     R = 10;
   }
-  int L = (yaw_So - Yaw) * Kp + speed;
+  uint8_t L = (yaw_So - Yaw) * Kp + speed;
   if (L > UpperLimit) {
     L = UpperLimit;
   } else if (L < 10) {
@@ -359,27 +359,43 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoLevel(void)
   if (millis() - lastUpdate < 20) return; // Run at ~50Hz, non-blocking
   lastUpdate = millis();
 
-  float Yaw = 0.0, Pitch = 0.0;
-  AppMPU6050getdata.MPU6050_dveGetEulerAngles(&Yaw, &Pitch);
+  float Yaw = 0.0, raw_Pitch = 0.0;
+  AppMPU6050getdata.MPU6050_dveGetEulerAngles(&Yaw, &raw_Pitch);
 
-  static int last_servo_cmd = 130;
-  const int SERVO_CENTER = 130;  // Level position at 0 tilt
-  const int SERVO_MIN = 50;      // Max downward (130 - 80 range)
+  // --- THE SOFTWARE SHOCK ABSORBER (Low-Pass Filter) ---
+  static float smoothed_Pitch = 0.0;
+  const float ALPHA = 0.15; // Tuning knob: 1.0 = raw noise, 0.05 = super smooth/slow
+  smoothed_Pitch = (ALPHA * raw_Pitch) + ((1.0 - ALPHA) * smoothed_Pitch);
+  // ------------------------------------------------------
+
+  static int last_servo_cmd = 110;
+  const int SERVO_CENTER = 110;  // Level position at 0 tilt
+  const int SERVO_MIN = 50;      // Max downward
   const int SERVO_MAX = 180;     // Max upward
-  const float Kp = 1.0;          // 1:1 degree mapping, adjust if needed
+  
+  // FIXED: Changed these to 'float' so your decimals don't get chopped off!
+  const float Kp = 1.0;          
   const float DEADBAND = 1.5;
 
-  if (abs(Pitch) > DEADBAND) {
-    // Opposite tilt: subtract pitch from center
-    int servo_cmd = SERVO_CENTER - (int)(Kp * Pitch);
+  // Use the smoothed_Pitch for our math instead of the raw, noisy data
+  if (abs(smoothed_Pitch) > DEADBAND) {
+    
+    // Add smoothed pitch to the center
+    int servo_cmd = SERVO_CENTER + (int)(Kp * smoothed_Pitch);
 
     if (servo_cmd < SERVO_MIN) servo_cmd = SERVO_MIN;
     if (servo_cmd > SERVO_MAX) servo_cmd = SERVO_MAX;
 
-    if (servo_cmd != last_servo_cmd) {
-      // Direct servo write — avoids the 500ms blocking delay
+    // Hysteresis: Only move the servo if the calculation changes by >= 2 degrees.
+    // This stops the servo from rapidly vibrating between two adjacent numbers.
+    if (abs(servo_cmd - last_servo_cmd) >= 2) {
       extern Servo myservo;
-      myservo.attach(10);       // PIN_Servo_y = 10
+      
+      // Only call attach if it isn't already attached to save processing time
+      if (!myservo.attached()) {
+        myservo.attach(10);       // PIN_Servo_y = 10
+      }
+      
       myservo.write(servo_cmd);
       // Do NOT detach — keeps servo holding position
       last_servo_cmd = servo_cmd;
@@ -548,7 +564,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void) {
 /*摇杆*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Rocker(void) {
   // Added AutoLevel_mode here so you can still drive while ploughing!
-  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode || Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
+  if (Application_ConquerorCarxxx0.Functional_Mode == Rocker_mode) { //|| Application_ConquerorCarxxx0.Functional_Mode == AutoLevel_mode) {
     ApplicationFunctionSet_ConquerorCarMotionControl(Application_ConquerorCarxxx0.Motion_Control /*direction*/, Rocker_CarSpeed /*speed*/);
   }
 }
@@ -564,18 +580,18 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Tracking(void) {
       ApplicationFunctionSet_ConquerorCarMotionControl(stop_it, 0);
       return;
     }
-    int getAnaloguexxx_L = AppITR20001.DeviceDriverSet_ITR20001_getAnaloguexxx_L();
-    int getAnaloguexxx_M = AppITR20001.DeviceDriverSet_ITR20001_getAnaloguexxx_M();
-    int getAnaloguexxx_R = AppITR20001.DeviceDriverSet_ITR20001_getAnaloguexxx_R();
+    uint8_t getAnaloguexxx_L = AppITR20001.DeviceDriverSet_ITR20001_getAnaloguexxx_L();
+    uint8_t getAnaloguexxx_M = AppITR20001.DeviceDriverSet_ITR20001_getAnaloguexxx_M();
+    uint8_t getAnaloguexxx_R = AppITR20001.DeviceDriverSet_ITR20001_getAnaloguexxx_R();
 #if _Test_print
     static unsigned long print_time = 0;
     if (millis() - print_time > 500) {
       print_time = millis();
-      Serial.print("ITR20001_getAnaloguexxx_L=");
+      //Serial.print("ITR20001_getAnaloguexxx_L=");
       Serial.println(getAnaloguexxx_L);
-      Serial.print("ITR20001_getAnaloguexxx_M=");
+      //Serial.print("ITR20001_getAnaloguexxx_M=");
       Serial.println(getAnaloguexxx_M);
-      Serial.print("ITR20001_getAnaloguexxx_R=");
+      //Serial.print("ITR20001_getAnaloguexxx_R=");
       Serial.println(getAnaloguexxx_R);
     }
 #endif
@@ -644,7 +660,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Obstacle(void) {
         en_ULTRASONIC_Get = is_ULTRASONIC_Get;
       }
 #if _Test_print
-      Serial.print("UltrasoundData_cm=");
+      //Serial.print("UltrasoundData_cm=");
       Serial.println(UltrasoundData_cm);
 #endif
       {
@@ -703,7 +719,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Follow(void) {
     } else {
       AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&UltrasoundData_cm /*out*/);
 #if _Test_print
-      Serial.print("UltrasoundData_cm=");
+      //Serial.print("UltrasoundData_cm=");
       Serial.println(UltrasoundData_cm);
 #endif
 
@@ -740,12 +756,12 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Follow(void) {
 }
 /*舵机控制*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t Set_Servo) {
-  static int z_angle = 90;
-  static int y_angle = 90;
+  static uint8_t z_angle = 90;
+  static uint8_t y_angle = 90;
   uint8_t is_Servo = Set_Servo;  //防止被优化
 
-  auto print_servo = [](int angle) {
-    Serial.print("Y servo angle = ");
+  auto print_servo = [](uint8_t angle) {
+    //Serial.print("Y servo angle = ");
     Serial.println(angle);
   };
 
@@ -768,19 +784,19 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Servo(uint8_t Set_Servo) {
       break;
 
     case 3:
-      y_angle = 80;
+      y_angle = 50;
       AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       print_servo(y_angle);
       break;
 
     case 4:
-      y_angle = 130;
+      y_angle = 140;
       AppServo.DeviceDriverSet_Servo_controls(2, y_angle);
       print_servo(y_angle);
       break;
     case 5:
-      AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo--y*/ 2, /*unsigned int Position_angle*/ 90);
-      AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo--z*/ 1, /*unsigned int Position_angle*/ 90);
+      AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo--y*/ 2, /*unsigned uint8_t Position_angle*/ 90);
+      AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo--z*/ 1, /*unsigned uint8_t Position_angle*/ 90);
       break;
     default:
       break;
@@ -1018,7 +1034,7 @@ void ApplicationFunctionSet::CMD_CarControlTimeLimit_xxx0(uint8_t is_CarDirectio
         if (CarControl_return == false) {
 
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           CarControl_return = true;
         }
@@ -1057,7 +1073,7 @@ void ApplicationFunctionSet::CMD_CarControlTimeLimit_xxx0(void) {
         if (CarControl_return == false) {
 
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           CarControl_return = true;
         }
@@ -1153,7 +1169,7 @@ void ApplicationFunctionSet::CMD_MotorControlSpeed_xxx0(void) {
 */
 void ApplicationFunctionSet::CMD_ServoControl_xxx0(void) {
   if (Application_ConquerorCarxxx0.Functional_Mode == CMD_ServoControl) {
-    AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo*/ CMD_is_Servo, /*unsigned int Position_angle*/ CMD_is_Servo_angle);
+    AppServo.DeviceDriverSet_Servo_controls(/*uint8_t Servo*/ CMD_is_Servo, /*unsigned uint8_t Position_angle*/ CMD_is_Servo_angle);
     Application_ConquerorCarxxx0.Functional_Mode = CMD_Programming_mode; /*进入编程模式提示符<等待下一组控制命令的到来>*/
   }
 }
@@ -1181,7 +1197,7 @@ void ApplicationFunctionSet::CMD_LightingControlTimeLimit_xxx0(uint8_t is_Lighti
         if (LightingControl_return == false) {
 
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           LightingControl_return = true;
         }
@@ -1219,7 +1235,7 @@ void ApplicationFunctionSet::CMD_LightingControlTimeLimit_xxx0(void) {
         if (LightingControl_return == false) {
 
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           LightingControl_return = true;
         }
@@ -1304,11 +1320,11 @@ void ApplicationFunctionSet::CMD_UltrasoundModuleStatus_xxx0(uint8_t is_get) {
   {
     if (true == UltrasoundDetectionStatus) {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_true}");
+      //Serial.print('{' + CommandSerialNumber + "_true}");
 #endif
     } else {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_false}");
+      //Serial.print('{' + CommandSerialNumber + "_false}");
 #endif
     }
   } else if (2 == is_get)  //超声波 is_get data
@@ -1316,7 +1332,7 @@ void ApplicationFunctionSet::CMD_UltrasoundModuleStatus_xxx0(uint8_t is_get) {
     char toString[10];
     sprintf(toString, "%d", UltrasoundData_cm);
 #if _is_print
-    Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
+    //Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
 #endif
   }
 }
@@ -1331,56 +1347,56 @@ void ApplicationFunctionSet::CMD_TraceModuleStatus_xxx0(uint8_t is_get) {
   {
     sprintf(toString, "%d", TrackingData_L);
 #if _is_print
-    Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
+    //Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
 #endif
     /*
     if (true == TrackingDetectionStatus_L)
     {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_true}");
+      //Serial.print('{' + CommandSerialNumber + "_true}");
 #endif
     }
     else
     {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_false}");
+      //Serial.print('{' + CommandSerialNumber + "_false}");
 #endif
     }*/
   } else if (1 == is_get) /*循迹状态获取中间*/
   {
     sprintf(toString, "%d", TrackingData_M);
 #if _is_print
-    Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
+    //Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
 #endif
     /*    if (true == TrackingDetectionStatus_M)
     {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_true}");
+      //Serial.print('{' + CommandSerialNumber + "_true}");
 #endif
     }
     else
     {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_false}");
+      //Serial.print('{' + CommandSerialNumber + "_false}");
 #endif
     }*/
   } else if (2 == is_get) /*循迹状态获取右边*/
   {
     sprintf(toString, "%d", TrackingData_R);
 #if _is_print
-    Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
+    //Serial.print('{' + CommandSerialNumber + '_' + toString + '}');
 #endif
 
     /*  if (true == TrackingDetectionStatus_R)
     {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_true}");
+      //Serial.print('{' + CommandSerialNumber + "_true}");
 #endif
     }
     else
     {
 #if _is_print
-      Serial.print('{' + CommandSerialNumber + "_false}");
+      //Serial.print('{' + CommandSerialNumber + "_false}");
 #endif
     }
     */
@@ -1534,7 +1550,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
 
     // if (true == SerialPortData.equals("{f}") || true == SerialPortData.equals("{b}") || true == SerialPortData.equals("{l}") || true == SerialPortData.equals("{r}"))
     // {
-    //   Serial.print(SerialPortData);
+    //   //Serial.print(SerialPortData);
     //   SerialPortData = "";
     //   return;
     // }
@@ -1551,7 +1567,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
       return;
     } else if (!error)  //检查反序列化是否成功
     {
-      int control_mode_N = doc["N"];
+      uint8_t control_mode_N = doc["N"];
       char *temp = doc["H"];
       CommandSerialNumber = temp;  //获取新命令的序号
 
@@ -1564,7 +1580,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_MotorDirection = doc["D3"];
 
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1575,7 +1591,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_CarTimer = doc["T"];
           Application_ConquerorCarxxx0.CMD_CarControl_Millis = millis();
 #if _is_print
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1584,7 +1600,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_CarDirection = doc["D1"];
           CMD_is_CarSpeed = doc["D2"];
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1593,7 +1609,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_MotorSpeed_L = doc["D1"];
           CMD_is_MotorSpeed_R = doc["D2"];
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1602,7 +1618,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_Servo = doc["D1"];
           CMD_is_Servo_angle = doc["D2"];
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1616,7 +1632,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_LightingTimer = doc["T"];
           Application_ConquerorCarxxx0.CMD_LightingControl_Millis = millis();
 #if _is_print
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1628,32 +1644,32 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           CMD_is_LightingColorValue_G = doc["D3"];
           CMD_is_LightingColorValue_B = doc["D4"];
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
         case 21: /*<命令：N 21>：超声波模块:测距 */
           CMD_UltrasoundModuleStatus_xxx0(doc["D1"]);
 #if _is_print
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
         case 22: /*<命令：N 22>：红外模块：寻迹 */
           CMD_TraceModuleStatus_xxx0(doc["D1"]);
 #if _is_print
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
         case 23: /*<命令：N 23>：是否离开地面 */
           if (true == Car_LeaveTheGround) {
 #if _is_print
-            Serial.print('{' + CommandSerialNumber + "_false}");
+            //Serial.print('{' + CommandSerialNumber + "_false}");
 #endif
           } else if (false == Car_LeaveTheGround) {
 #if _is_print
-            Serial.print('{' + CommandSerialNumber + "_true}");
+            //Serial.print('{' + CommandSerialNumber + "_true}");
 #endif
           }
           break;
@@ -1662,14 +1678,14 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           Application_ConquerorCarxxx0.Functional_Mode = CMD_ClearAllFunctions_Programming_mode; /*清除功能:进入编程模式*/
 
 #if _is_print
-          Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
         case 100:                                                                            /*<命令：N 100> */
           Application_ConquerorCarxxx0.Functional_Mode = CMD_ClearAllFunctions_Standby_mode; /*清除功能：进入空闲模式*/
 #if _is_print
-          Serial.print("{ok}");
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print("{ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
@@ -1683,8 +1699,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           }
 
 #if _is_print
-          // Serial.print('{' + CommandSerialNumber + "_ok}");
-          Serial.print("{ok}");
+          // //Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print("{ok}");
 #endif
           break;
 
@@ -1697,8 +1713,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           FastLED.setBrightness(CMD_is_FastLED_setBrightness);
 
 #if _Test_print
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
-          Serial.print("{ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
+          //Serial.print("{ok}");
 #endif
           break;
 
@@ -1711,7 +1727,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
           }
 
 #if _is_print
-          //Serial.print('{' + CommandSerialNumber + "_ok}");
+          ////Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
         case 102: /*<命令：N 102> :摇杆控制命令*/
@@ -1751,7 +1767,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
               break;
           }
 #if _is_print
-            // Serial.print('{' + CommandSerialNumber + "_ok}");
+            // //Serial.print('{' + CommandSerialNumber + "_ok}");
 #endif
           break;
 
